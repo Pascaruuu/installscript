@@ -54,7 +54,7 @@ if ([string]::IsNullOrWhiteSpace($existingGhcrToken)) {
     
     $ghcrTokenPlain = ""
     while ([string]::IsNullOrWhiteSpace($ghcrTokenPlain)) {
-        $inputVal = Read-Host "Enter GitHub PAT (read:packages)" -AsSecureString
+        $inputVal = Read-Host "Enter GitHub PAT (requires: read:packages AND repo)" -AsSecureString
         $ghcrTokenPlain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($inputVal))
     }
     
@@ -99,7 +99,7 @@ Write-Host "Docker authenticated successfully." -ForegroundColor Green
 # --- Fetch setup.ps1 via GitHub API ---
 Write-Host "Downloading private setup.ps1 script..." -ForegroundColor Yellow
 $headers = @{
-    "Authorization" = "token $ghcrTokenPlain"
+    "Authorization" = "Bearer $ghcrTokenPlain"
     "Accept"        = "application/vnd.github.v3.raw"
 }
 try {
