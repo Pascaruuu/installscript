@@ -7,6 +7,7 @@ $global:PublicScriptUrl = "https://raw.githubusercontent.com/Pascaruuu/installsc
 $RepoOwner              = "Pascaruuu"
 $RepoName               = "Invoice-recording-system"
 $PrivateScriptPath      = "scripts/setup.ps1"
+$RepoBranch             = "6-prototype"
 # ============================================================
 
 # --- Self-Elevation Check via EncodedCommand ---
@@ -105,7 +106,7 @@ $headers = @{
 try {
     # Ensure TLS 1.2 is enabled
     [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-    $privateScriptContent = Invoke-RestMethod -Uri "https://api.github.com/repos/$RepoOwner/$RepoName/contents/$PrivateScriptPath" -Headers $headers
+    $privateScriptContent = Invoke-RestMethod -Uri "https://api.github.com/repos/$($RepoOwner)/$($RepoName)/contents/$($PrivateScriptPath)?ref=$($RepoBranch)" -Headers $headers
 } catch {
     Write-Host "ERROR: Failed to download setup.ps1 from private repo via GitHub API: $_" -ForegroundColor Red
     exit 1
