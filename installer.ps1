@@ -77,7 +77,7 @@ if ([string]::IsNullOrWhiteSpace($existingGhcrToken)) {
     Write-Host "Saved GHCR credentials to $envFile" -ForegroundColor Green
 }
 
-# --- Decode Credentials for API & Docker ---
+# --- Decode Credentials for API ---
 $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($existingGhcrToken))
 if ($decoded -match "^([^:]+):(.+)$") {
     $ghcrUser = $Matches[1]
@@ -86,15 +86,6 @@ if ($decoded -match "^([^:]+):(.+)$") {
     Write-Host "ERROR: Invalid GHCR_TOKEN format in .env file." -ForegroundColor Red
     exit 1
 }
-
-# --- Docker Login ---
-Write-Host "Authenticating with GitHub Container Registry..." -ForegroundColor Yellow
-$ghcrTokenPlain | docker login ghcr.io -u $ghcrUser --password-stdin
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERROR: Docker login to ghcr.io failed. Please check your credentials." -ForegroundColor Red
-    exit 1
-}
-Write-Host "Docker authenticated successfully." -ForegroundColor Green
 
 
 # --- Fetch setup.ps1 via GitHub API ---
