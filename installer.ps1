@@ -17,92 +17,111 @@ if (-not $isAdmin) {
     $scriptString = $MyInvocation.MyCommand.ScriptBlock.ToString()
     if ($scriptString) {
         $encodedCommand = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($scriptString))
-        Start-Process powershell.exe -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand" -Verb RunAs
+        Start-Process powershell.exe -ArgumentList "-NoExit -NoProfile -ExecutionPolicy Bypass -EncodedCommand $encodedCommand" -Verb RunAs
     } else {
         Write-Host "ERROR: Please run PowerShell as Administrator." -ForegroundColor Red
+        Write-Host "Press Enter to exit..."
+        Read-Host
     }
     exit
 }
 
-# --- Setup Paths ---
-$installDir = Join-Path $env:USERPROFILE "ocr-system"
-
-if (!(Test-Path $installDir)) {
-    New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-}
-$envFile = Join-Path $installDir ".env"
-
-# --- Read/Get GHCR Token ---
-$existingGhcrToken = ""
-if (Test-Path $envFile) {
-    $line = Get-Content -Path $envFile | Where-Object { $_ -match "^\s*GHCR_TOKEN\s*=" } | Select-Object -First 1
-    if ($line) {
-        $val = $line -replace "^\s*GHCR_TOKEN\s*=\s*", ""
-        $existingGhcrToken = $val.Trim().Trim('"').Trim("'")
-    }
-}
-
-if ([string]::IsNullOrWhiteSpace($existingGhcrToken)) {
-    Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host "  GITHUB CONTAINER REGISTRY (GHCR) AUTHENTICATION" -ForegroundColor Cyan
-    Write-Host "============================================================" -ForegroundColor Cyan
-    Write-Host "Generate a token at: https://github.com/settings/tokens" -ForegroundColor Cyan
-    
-    $ghcrUser = ""
-    while ([string]::IsNullOrWhiteSpace($ghcrUser)) {
-        $ghcrUser = Read-Host "Enter GitHub Username"
-    }
-    
-    $ghcrTokenPlain = ""
-    while ([string]::IsNullOrWhiteSpace($ghcrTokenPlain)) {
-        $inputVal = Read-Host "Enter GitHub PAT (requires: read:packages AND repo)" -AsSecureString
-        $ghcrTokenPlain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($inputVal))
-    }
-    
-    $existingGhcrToken = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${ghcrUser}:${ghcrTokenPlain}"))
-    
-    # Save/update in .env
-    if (Test-Path $envFile) {
-        $content = Get-Content -Path $envFile
-        if ($content -match "GHCR_TOKEN=") {
-            $content = $content -replace '^GHCR_TOKEN=.*', "GHCR_TOKEN=`"$existingGhcrToken`""
-            Set-Content -Path $envFile -Value $content
-        } else {
-            $content += "`nGHCR_TOKEN=`"$existingGhcrToken`""
-            Set-Content -Path $envFile -Value $content
-        }
-    } else {
-        Set-Content -Path $envFile -Value "GHCR_TOKEN=`"$existingGhcrToken`""
-    }
-    Write-Host "Saved GHCR credentials to $envFile" -ForegroundColor Green
-}
-
-# --- Decode Credentials for API ---
-$decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($existingGhcrToken))
-if ($decoded -match "^([^:]+):(.+)$") {
-    $ghcrUser = $Matches[1]
-    $ghcrTokenPlain = $Matches[2]
-} else {
-    Write-Host "ERROR: Invalid GHCR_TOKEN format in .env file." -ForegroundColor Red
-    exit 1
-}
-
-
-# --- Fetch setup.ps1 via GitHub API ---
-Write-Host "Downloading private setup.ps1 script..." -ForegroundColor Yellow
-$headers = @{
-    "Authorization" = "Bearer $ghcrTokenPlain"
-    "Accept"        = "application/vnd.github.v3.raw"
-}
 try {
-    # Ensure TLS 1.2 is enabled
-    [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
-    $privateScriptContent = Invoke-RestMethod -Uri "https://api.github.com/repos/$($RepoOwner)/$($RepoName)/contents/$($PrivateScriptPath)?ref=$($RepoBranch)" -Headers $headers
-} catch {
-    Write-Host "ERROR: Failed to download setup.ps1 from private repo via GitHub API: $_" -ForegroundColor Red
-    exit 1
-}
+    # --- Setup Paths ---
+    $installDir = Join-Path $env:USERPROFILE "ocr-system"
 
-# --- Execute setup.ps1 in memory ---
-Write-Host "Executing setup.ps1 in memory..." -ForegroundColor Green
-Invoke-Expression $privateScriptContent
+    if (!(Test-Path $installDir)) {
+        New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+    }
+    $envFile = Join-Path $installDir ".env"
+
+    # --- Read/Get GHCR Token ---
+    $existingGhcrToken = ""
+    if (Test-Path $envFile) {
+        $line = Get-Content -Path $envFile | Where-Object { $_ -match "^\s*GHCR_TOKEN\s*=" } | Select-Object -First 1
+        if ($line) {
+            $val = $line -replace "^\s*GHCR_TOKEN\s*=\s*", ""
+            $existingGhcrToken = $val.Trim().Trim('"').Trim("'")
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($existingGhcrToken)) {
+        Write-Host "============================================================" -ForegroundColor Cyan
+        Write-Host "  GITHUB CONTAINER REGISTRY (GHCR) AUTHENTICATION" -ForegroundColor Cyan
+        Write-Host "============================================================" -ForegroundColor Cyan
+        Write-Host "Generate a token at: https://github.com/settings/tokens" -ForegroundColor Cyan
+        
+        $ghcrUser = ""
+        while ([string]::IsNullOrWhiteSpace($ghcrUser)) {
+            $inputUser = Read-Host "Enter GitHub Username"
+            if ($null -ne $inputUser) {
+                $ghcrUser = $inputUser.Trim()
+            }
+        }
+        
+        $ghcrTokenPlain = ""
+        while ([string]::IsNullOrWhiteSpace($ghcrTokenPlain)) {
+            $inputVal = Read-Host "Enter GitHub PAT (requires: read:packages AND repo)" -AsSecureString
+            $decrypted = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto([System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($inputVal))
+            if ($null -ne $decrypted) {
+                $ghcrTokenPlain = $decrypted.Trim()
+            }
+        }
+        
+        $existingGhcrToken = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${ghcrUser}:${ghcrTokenPlain}"))
+        
+        # Save/update in .env
+        if (Test-Path $envFile) {
+            $content = Get-Content -Path $envFile
+            if ($content -match "GHCR_TOKEN=") {
+                $content = $content -replace '^GHCR_TOKEN=.*', "GHCR_TOKEN=`"$existingGhcrToken`""
+                Set-Content -Path $envFile -Value $content
+            } else {
+                $content += "`nGHCR_TOKEN=`"$existingGhcrToken`""
+                Set-Content -Path $envFile -Value $content
+            }
+        } else {
+            Set-Content -Path $envFile -Value "GHCR_TOKEN=`"$existingGhcrToken`""
+        }
+        Write-Host "Saved GHCR credentials to $envFile" -ForegroundColor Green
+    }
+
+    # --- Decode Credentials for API ---
+    $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($existingGhcrToken))
+    if ($decoded -match "^([^:]+):(.+)$") {
+        $ghcrUser = $Matches[1]
+        $ghcrTokenPlain = $Matches[2]
+    } else {
+        Write-Host "ERROR: Invalid GHCR_TOKEN format in .env file." -ForegroundColor Red
+        exit 1
+    }
+
+
+    # --- Fetch setup.ps1 via GitHub API ---
+    Write-Host "Downloading private setup.ps1 script..." -ForegroundColor Yellow
+    $headers = @{
+        "Authorization" = "Bearer $ghcrTokenPlain"
+        "Accept"        = "application/vnd.github.v3.raw"
+    }
+    try {
+        # Ensure TLS 1.2 is enabled
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+        $privateScriptContent = Invoke-RestMethod -Uri "https://api.github.com/repos/$($RepoOwner)/$($RepoName)/contents/$($PrivateScriptPath)?ref=$($RepoBranch)" -Headers $headers
+    } catch {
+        Write-Host "ERROR: Failed to download setup.ps1 from private repo via GitHub API: $_" -ForegroundColor Red
+        exit 1
+    }
+
+    # --- Execute setup.ps1 in memory ---
+    Write-Host "Executing setup.ps1 in memory..." -ForegroundColor Green
+    Invoke-Expression $privateScriptContent
+}
+catch {
+    Write-Host "ERROR: An unexpected error occurred: $_" -ForegroundColor Red
+    Write-Host "Error Details: $($_.ScriptStackTrace)" -ForegroundColor DarkRed
+}
+finally {
+    Write-Host ""
+    Write-Host "Press Enter to exit..." -ForegroundColor Yellow
+    Read-Host | Out-Null
+}
