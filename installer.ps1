@@ -75,12 +75,16 @@ try {
             $existingGhcrToken = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes("${ghcrUser}:${ghcrTokenPlain}"))
         } else {
             # --- Decode Credentials for API ---
-            $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($existingGhcrToken))
-            if ($decoded -match "^([^:]+):(.+)$") {
-                $ghcrUser = $Matches[1]
-                $ghcrTokenPlain = $Matches[2]
-            } else {
-                Write-Host "WARNING: Invalid GHCR_TOKEN format in .env file. Clearing and re-prompting." -ForegroundColor Yellow
+            try {
+                $decoded = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($existingGhcrToken))
+                if ($decoded -match "^([^:]+):(.+)$") {
+                    $ghcrUser = $Matches[1]
+                    $ghcrTokenPlain = $Matches[2]
+                } else {
+                    throw "Invalid decoded format"
+                }
+            } catch {
+                Write-Host "WARNING: Invalid or corrupted GHCR_TOKEN in .env file. Clearing and re-prompting." -ForegroundColor Yellow
                 $existingGhcrToken = ""
                 if (Test-Path $envFile) {
                     $content = Get-Content -Path $envFile | Where-Object { $_ -notmatch "^\s*GHCR_TOKEN\s*=" }
